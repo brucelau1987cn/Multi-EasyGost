@@ -18,7 +18,7 @@
 
 ### 🆕 新功能
 - **gost 版本自动获取最新版**：从 GitHub API 动态拉取最新 release 版本，不再绑定固定版本
-- **gh-proxy.com 国内加速下载**：替换原已废弃的 OSS 镜像，国内机器可选加速
+- **ghfast.top 国内加速下载**：替换原已废弃的 OSS 镜像，国内机器可选加速
 
 ### 🐛 Bug 修复
 - 安装校验路径错误：`/usr/lib/systemctl/` → `/usr/lib/systemd/system/`
@@ -58,7 +58,7 @@
   - relay+wss
 - 落地机一键创建 ss/socks5/http 代理 (gost 内置)
 - 支持多传输类型的多落地简单型均衡负载
-- **gh-proxy.com 国内加速下载镜像**
+- **ghfast.top 国内加速下载镜像**
 - 简单创建或删除 gost 定时重启任务
 - 脚本自动检查更新
 - 转发 CDN 自选节点 ip
