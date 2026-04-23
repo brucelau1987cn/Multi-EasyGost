@@ -124,6 +124,11 @@ function Install_ct() {
     cp /tmp/gost_rawconf_bak "$raw_conf_path" 2>/dev/null
     rm -f /tmp/gost_rawconf_bak
   fi
+  if [ -f /tmp/gost_rawconf_bak ]; then
+    mkdir -p /etc/gost
+    cp /tmp/gost_rawconf_bak "$raw_conf_path" 2>/dev/null
+    rm -f /tmp/gost_rawconf_bak
+  fi
   systemctl enable gost && systemctl restart gost
   echo "------------------------------"
   if test -a /usr/bin/gost -a /usr/lib/systemd/system/gost.service -a /etc/gost/config.json; then
