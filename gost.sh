@@ -97,23 +97,36 @@ function Install_ct() {
   echo -e "若为国内机器建议使用 gh-proxy.com 加速下载"
   read -e -p "是否使用国内加速镜像？[y/n]:" addyn
   [[ -z ${addyn} ]] && addyn="n"
-  GOST_GH_URL="https://github.com/ginuerzh/gost/releases/download/v${ct_new_ver}/gost-linux-${bit}-${ct_new_ver}.gz"
+  # 从 GitHub API 获取实际下载 URL（兼容新旧版本文件名格式）
+  GOST_DL_URL=$(wget -qO- -t2 -T5 "https://api.github.com/repos/ginuerzh/gost/releases/tags/v${ct_new_ver}" | grep "browser_download_url" | grep -i "linux.*${bit}" | head -1 | sed 's/.*"browser_download_url": *"//;s/".*//')
+  if [[ -z "$GOST_DL_URL" ]]; then
+    # 兜底：旧版命名格式
+    GOST_DL_URL="https://github.com/ginuerzh/gost/releases/download/v${ct_new_ver}/gost-linux-${bit}-${ct_new_ver}.gz"
+  fi
+  GOST_DL_NAME=$(basename "$GOST_DL_URL")
   SVC_URL="https://raw.githubusercontent.com/brucelau1987cn/Multi-EasyGost/master/gost.service"
   CONF_URL="https://raw.githubusercontent.com/brucelau1987cn/Multi-EasyGost/master/config.json"
   if [[ ${addyn} == [Yy] ]]; then
-    GOST_DL_URL="https://gh-proxy.com/${GOST_GH_URL}"
-    SVC_DL_URL="https://gh-proxy.com/${SVC_URL}"
-    CONF_DL_URL="https://gh-proxy.com/${CONF_URL}"
+    GOST_DL_URL="https://ghfast.top/${GOST_DL_URL}"
+    SVC_DL_URL="https://ghfast.top/${SVC_URL}"
+    CONF_DL_URL="https://ghfast.top/${CONF_URL}"
   else
-    GOST_DL_URL="$GOST_GH_URL"
     SVC_DL_URL="$SVC_URL"
     CONF_DL_URL="$CONF_URL"
   fi
-  rm -rf gost-linux-"$bit"-"$ct_new_ver".gz
-  wget --no-check-certificate "$GOST_DL_URL"
-  gunzip gost-linux-"$bit"-"$ct_new_ver".gz
-  mv gost-linux-"$bit"-"$ct_new_ver" gost
-  mv gost /usr/bin/gost
+  rm -rf "$GOST_DL_NAME"
+  wget --no-check-certificate "$GOST_DL_URL" -O "$GOST_DL_NAME"
+  # 自动识别压缩格式解压
+  if [[ "$GOST_DL_NAME" == *.tar.gz ]]; then
+    tar xzf "$GOST_DL_NAME" gost 2>/dev/null || tar xzf "$GOST_DL_NAME"
+    GOST_BIN=$(find . -maxdepth 2 -name "gost" -type f 2>/dev/null | head -1)
+    if [[ -n "$GOST_BIN" ]]; then
+      mv "$GOST_BIN" /usr/bin/gost
+    fi
+  else
+    gunzip -f "$GOST_DL_NAME" 2>/dev/null
+    mv "${GOST_DL_NAME%.gz}" /usr/bin/gost 2>/dev/null
+  fi
   chmod 755 /usr/bin/gost
   wget --no-check-certificate "$SVC_DL_URL" && chmod 755 gost.service && mv gost.service /usr/lib/systemd/system
   mkdir -p /etc/gost && wget --no-check-certificate "$CONF_DL_URL" && mv config.json /etc/gost && chmod 755 /etc/gost
