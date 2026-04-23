@@ -210,7 +210,8 @@ function read_s_port() {
     read -p "请输入ss密码: " flag_b
   elif [ "$flag_a" == "ss2022" ]; then
     echo -e "-----------------------------------"
-    read -p "请输入SS2022密码(Base64): " flag_b
+    read -p "请输入SS2022监听端口: " flag_b
+    # flag_b = 端口, flag_c = 加密方式, ss2022_psk/ss2022_ipsk 已在read_d_ip中生成
   elif [ "$flag_a" == "socks" ]; then
     echo -e "-----------------------------------"
     read -p "请输入socks密码: " flag_b
@@ -234,6 +235,8 @@ function read_d_ip() {
     echo -e "[4] chacha20"
     echo -e "[5] rc4-md5"
     echo -e "[6] AEAD_CHACHA20_POLY1305"
+    echo -e "[7] 2022-blake3-aes-128-gcm (SS2022)"
+    echo -e "[8] 2022-blake3-aes-256-gcm (SS2022)"
     echo -e "-----------------------------------"
     read -p "请选择ss加密方式: " ssencrypt
 
@@ -249,23 +252,28 @@ function read_d_ip() {
       flag_c="rc4-md5"
     elif [ "$ssencrypt" == "6" ]; then
       flag_c="AEAD_CHACHA20_POLY1305"
-    else
-      echo "type error, please try again"
-      exit
-    fi
-  elif [ "$flag_a" == "ss2022" ]; then
-    echo -e "------------------------------------------------------------------"
-    echo -e "请问您要设置的SS2022加密方式: "
-    echo -e "-----------------------------------"
-    echo -e "[1] 2022-blake3-aes-128-gcm"
-    echo -e "[2] 2022-blake3-aes-256-gcm"
-    echo -e "-----------------------------------"
-    read -p "请选择SS2022加密方式: " ss2022encrypt
-
-    if [ "$ss2022encrypt" == "1" ]; then
+    elif [ "$ssencrypt" == "7" ]; then
       flag_c="2022-blake3-aes-128-gcm"
-    elif [ "$ss2022encrypt" == "2" ]; then
+      flag_a="ss2022"
+      # SS2022: 自动生成 16 字节 Base64 编码密钥 (12字节随机数->16字节base64)
+      ss2022_psk=$(openssl rand 16 | base64 | tr -d '\n' | head -c 24)
+      ss2022_ipsk=$(openssl rand 16 | base64 | tr -d '\n' | head -c 24)
+      flag_d="${ss2022_psk}:${ss2022_ipsk}"
+      echo -e "${Info} SS2022 密钥已自动生成:"
+      echo -e "  PSK:  ${Green_font_prefix}${ss2022_psk}${Font_color_suffix}"
+      echo -e "  IPSK: ${Green_font_prefix}${ss2022_ipsk}${Font_color_suffix}"
+      echo -e "  请妥善保存以上密钥！"
+    elif [ "$ssencrypt" == "8" ]; then
       flag_c="2022-blake3-aes-256-gcm"
+      flag_a="ss2022"
+      # SS2022: 自动生成 32 字节 Base64 编码密钥 (24字节随机数->32字节base64)
+      ss2022_psk=$(openssl rand 24 | base64 | tr -d '\n' | head -c 44)
+      ss2022_ipsk=$(openssl rand 24 | base64 | tr -d '\n' | head -c 44)
+      flag_d="${ss2022_psk}:${ss2022_ipsk}"
+      echo -e "${Info} SS2022 密钥已自动生成:"
+      echo -e "  PSK:  ${Green_font_prefix}${ss2022_psk}${Font_color_suffix}"
+      echo -e "  IPSK: ${Green_font_prefix}${ss2022_ipsk}${Font_color_suffix}"
+      echo -e "  请妥善保存以上密钥！"
     else
       echo "type error, please try again"
       exit
@@ -599,7 +607,6 @@ function proxy() {
   echo -e "[1] shadowsocks"
   echo -e "[2] socks5(强烈建议加隧道用于Telegram代理)"
   echo -e "[3] http"
-  echo -e "[4] Shadowsocks2022 (SS2022)"
   echo -e "-----------------------------------"
   read -p "请选择代理类型: " numproxy
   if [ "$numproxy" == "1" ]; then
@@ -608,8 +615,6 @@ function proxy() {
     flag_a="socks"
   elif [ "$numproxy" == "3" ]; then
     flag_a="http"
-  elif [ "$numproxy" == "4" ]; then
-    flag_a="ss2022"
   else
     echo "type error, please try again"
     exit
@@ -691,7 +696,12 @@ function method() {
     elif [ "$is_encrypt" == "ss" ]; then
       echo "        \"ss://$d_ip:$s_port@:$d_port\"" >>$gost_conf_path
     elif [ "$is_encrypt" == "ss2022" ]; then
-      echo "        \"ss2022://$d_ip:$s_port@:$d_port\"" >>$gost_conf_path
+      # SS2022: d_ip=method, d_port=psk:ipsk (from rawconf), s_port=listen_port
+      ss2022_method="$d_ip"
+      ss2022_keys="$d_port"
+      ss2022_psk_val="${ss2022_keys%%:*}"
+      ss2022_ipsk_val="${ss2022_keys#*:}"
+      echo "        \"ss2022://${ss2022_method}:${ss2022_psk_val}@:${s_port}?ipsk=${ss2022_ipsk_val}\"" >>$gost_conf_path
     elif [ "$is_encrypt" == "socks" ]; then
       echo "        \"socks5://$d_ip:$s_port@:$d_port\"" >>$gost_conf_path
     elif [ "$is_encrypt" == "http" ]; then
