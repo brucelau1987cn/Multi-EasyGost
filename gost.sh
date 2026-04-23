@@ -2,8 +2,8 @@
 Green_font_prefix="\033[32m" && Red_font_prefix="\033[31m" && Green_background_prefix="\033[42;37m" && Font_color_suffix="\033[0m"
 Info="${Green_font_prefix}[信息]${Font_color_suffix}"
 Error="${Red_font_prefix}[错误]${Font_color_suffix}"
-shell_version="1.1.1"
-ct_new_ver="2.11.2" # 2.x 不再跟随官方更新
+shell_version="1.2.0"
+ct_new_ver=""  # 动态获取最新版，见 check_new_ver()
 gost_conf_path="/etc/gost/config.json"
 raw_conf_path="/etc/gost/rawconf"
 function checknew() {
@@ -12,7 +12,7 @@ function checknew() {
   echo "你的gost版本为:""$checknew"""
   echo -n 是否更新\(y/n\)\:
   read checknewnum
-  if test $checknewnum = "y"; then
+  if test "$checknewnum" = "y"; then
     cp -r /etc/gost /tmp/
     Install_ct
     rm -rf /etc/gost
@@ -23,20 +23,15 @@ function checknew() {
   fi
 }
 function check_sys() {
-  if [[ -f /etc/redhat-release ]]; then
-    release="centos"
-  elif cat /etc/issue | grep -q -E -i "debian"; then
+  if [ -f /etc/os-release ]; then
+    . /etc/os-release
+    case "$ID" in
+      debian|ubuntu) release="$ID" ;;
+      centos|rhel|fedora) release="centos" ;;
+      *) release="debian" ;;
+    esac
+  else
     release="debian"
-  elif cat /etc/issue | grep -q -E -i "ubuntu"; then
-    release="ubuntu"
-  elif cat /etc/issue | grep -q -E -i "centos|red hat|redhat"; then
-    release="centos"
-  elif cat /proc/version | grep -q -E -i "debian"; then
-    release="debian"
-  elif cat /proc/version | grep -q -E -i "ubuntu"; then
-    release="ubuntu"
-  elif cat /proc/version | grep -q -E -i "centos|red hat|redhat"; then
-    release="centos"
   fi
   bit=$(uname -m)
   if test "$bit" != "x86_64"; then
@@ -65,7 +60,7 @@ function check_new_ver() {
   # deprecated
   ct_new_ver=$(wget --no-check-certificate -qO- -t2 -T3 https://api.github.com/repos/ginuerzh/gost/releases/latest | grep "tag_name" | head -n 1 | awk -F ":" '{print $2}' | sed 's/\"//g;s/,//g;s/ //g;s/v//g')
   if [[ -z ${ct_new_ver} ]]; then
-    ct_new_ver="2.11.2"
+    ct_new_ver="2.12.0"
     echo -e "${Error} gost 最新版本获取失败，正在下载v${ct_new_ver}版"
   else
     echo -e "${Info} gost 目前最新版本为 ${ct_new_ver}"
@@ -74,13 +69,16 @@ function check_new_ver() {
 function check_file() {
   if test ! -d "/usr/lib/systemd/system/"; then
     mkdir /usr/lib/systemd/system
-    chmod -R 777 /usr/lib/systemd/system
   fi
 }
 function check_nor_file() {
   rm -rf "$(pwd)"/gost
   rm -rf "$(pwd)"/gost.service
   rm -rf "$(pwd)"/config.json
+  # 备份 rawconf 防止重装转发规则丢失
+  if [ -f "$raw_conf_path" ]; then
+    cp "$raw_conf_path" /tmp/gost_rawconf_bak 2>/dev/null
+  fi
   rm -rf /etc/gost
   rm -rf /usr/lib/systemd/system/gost.service
   rm -rf /usr/bin/gost
@@ -92,32 +90,43 @@ function Install_ct() {
   check_file
   check_sys
   # check_new_ver
-  echo -e "若为国内机器建议使用大陆镜像加速下载"
-  read -e -p "是否使用？[y/n]:" addyn
-  [[ -z ${addyn} ]] && addyn="n"
-  if [[ ${addyn} == [Yy] ]]; then
-    rm -rf gost-linux-"$bit"-"$ct_new_ver".gz
-    wget --no-check-certificate https://gotunnel.oss-cn-shenzhen.aliyuncs.com/gost-linux-"$bit"-"$ct_new_ver".gz
-    gunzip gost-linux-"$bit"-"$ct_new_ver".gz
-    mv gost-linux-"$bit"-"$ct_new_ver" gost
-    mv gost /usr/bin/gost
-    chmod -R 777 /usr/bin/gost
-    wget --no-check-certificate https://gotunnel.oss-cn-shenzhen.aliyuncs.com/gost.service && chmod -R 777 gost.service && mv gost.service /usr/lib/systemd/system
-    mkdir /etc/gost && wget --no-check-certificate https://gotunnel.oss-cn-shenzhen.aliyuncs.com/config.json && mv config.json /etc/gost && chmod -R 777 /etc/gost
-  else
-    rm -rf gost-linux-"$bit"-"$ct_new_ver".gz
-    wget --no-check-certificate https://github.com/ginuerzh/gost/releases/download/v"$ct_new_ver"/gost-linux-"$bit"-"$ct_new_ver".gz
-    gunzip gost-linux-"$bit"-"$ct_new_ver".gz
-    mv gost-linux-"$bit"-"$ct_new_ver" gost
-    mv gost /usr/bin/gost
-    chmod -R 777 /usr/bin/gost
-    wget --no-check-certificate https://raw.githubusercontent.com/KANIKIG/Multi-EasyGost/master/gost.service && chmod -R 777 gost.service && mv gost.service /usr/lib/systemd/system
-    mkdir /etc/gost && wget --no-check-certificate https://raw.githubusercontent.com/KANIKIG/Multi-EasyGost/master/config.json && mv config.json /etc/gost && chmod -R 777 /etc/gost
+  # 动态获取最新版本号
+  if [[ -z "$ct_new_ver" ]]; then
+    check_new_ver
   fi
+  echo -e "若为国内机器建议使用 gh-proxy.com 加速下载"
+  read -e -p "是否使用国内加速镜像？[y/n]:" addyn
+  [[ -z ${addyn} ]] && addyn="n"
+  GOST_GH_URL="https://github.com/ginuerzh/gost/releases/download/v${ct_new_ver}/gost-linux-${bit}-${ct_new_ver}.gz"
+  SVC_URL="https://raw.githubusercontent.com/brucelau1987cn/Multi-EasyGost/master/gost.service"
+  CONF_URL="https://raw.githubusercontent.com/brucelau1987cn/Multi-EasyGost/master/config.json"
+  if [[ ${addyn} == [Yy] ]]; then
+    GOST_DL_URL="https://gh-proxy.com/${GOST_GH_URL}"
+    SVC_DL_URL="https://gh-proxy.com/${SVC_URL}"
+    CONF_DL_URL="https://gh-proxy.com/${CONF_URL}"
+  else
+    GOST_DL_URL="$GOST_GH_URL"
+    SVC_DL_URL="$SVC_URL"
+    CONF_DL_URL="$CONF_URL"
+  fi
+  rm -rf gost-linux-"$bit"-"$ct_new_ver".gz
+  wget --no-check-certificate "$GOST_DL_URL"
+  gunzip gost-linux-"$bit"-"$ct_new_ver".gz
+  mv gost-linux-"$bit"-"$ct_new_ver" gost
+  mv gost /usr/bin/gost
+  chmod 755 /usr/bin/gost
+  wget --no-check-certificate "$SVC_DL_URL" && chmod 755 gost.service && mv gost.service /usr/lib/systemd/system
+  mkdir -p /etc/gost && wget --no-check-certificate "$CONF_DL_URL" && mv config.json /etc/gost && chmod 755 /etc/gost
 
+  # 恢复备份的 rawconf
+  if [ -f /tmp/gost_rawconf_bak ]; then
+    mkdir -p /etc/gost
+    cp /tmp/gost_rawconf_bak "$raw_conf_path" 2>/dev/null
+    rm -f /tmp/gost_rawconf_bak
+  fi
   systemctl enable gost && systemctl restart gost
   echo "------------------------------"
-  if test -a /usr/bin/gost -a /usr/lib/systemctl/gost.service -a /etc/gost/config.json; then
+  if test -a /usr/bin/gost -a /usr/lib/systemd/system/gost.service -a /etc/gost/config.json; then
     echo "gost安装成功"
     rm -rf "$(pwd)"/gost
     rm -rf "$(pwd)"/gost.service
@@ -199,6 +208,9 @@ function read_s_port() {
   if [ "$flag_a" == "ss" ]; then
     echo -e "-----------------------------------"
     read -p "请输入ss密码: " flag_b
+  elif [ "$flag_a" == "ss2022" ]; then
+    echo -e "-----------------------------------"
+    read -p "请输入SS2022密码(Base64): " flag_b
   elif [ "$flag_a" == "socks" ]; then
     echo -e "-----------------------------------"
     read -p "请输入socks密码: " flag_b
@@ -237,6 +249,23 @@ function read_d_ip() {
       flag_c="rc4-md5"
     elif [ "$ssencrypt" == "6" ]; then
       flag_c="AEAD_CHACHA20_POLY1305"
+    else
+      echo "type error, please try again"
+      exit
+    fi
+  elif [ "$flag_a" == "ss2022" ]; then
+    echo -e "------------------------------------------------------------------"
+    echo -e "请问您要设置的SS2022加密方式: "
+    echo -e "-----------------------------------"
+    echo -e "[1] 2022-blake3-aes-128-gcm"
+    echo -e "[2] 2022-blake3-aes-256-gcm"
+    echo -e "-----------------------------------"
+    read -p "请选择SS2022加密方式: " ss2022encrypt
+
+    if [ "$ss2022encrypt" == "1" ]; then
+      flag_c="2022-blake3-aes-128-gcm"
+    elif [ "$ss2022encrypt" == "2" ]; then
+      flag_c="2022-blake3-aes-256-gcm"
     else
       echo "type error, please try again"
       exit
@@ -296,7 +325,7 @@ function read_d_ip() {
     echo -e "------------------------------------------------------------------"
     echo -e "请问你要将本机从${flag_b}接收到的流量转发向哪个IP或域名?"
     echo -e "注: IP既可以是[远程机器/当前机器]的公网IP, 也可是以本机本地回环IP(即127.0.0.1)"
-    echo -e "具体IP地址的填写, 取决于接收该流量的服务正在监听的IP(详见: https://github.com/KANIKIG/Multi-EasyGost)"
+    echo -e "具体IP地址的填写, 取决于接收该流量的服务正在监听的IP(详见: https://github.com/brucelau1987cn/Multi-EasyGost)"
     if [[ ${is_cert} == [Yy] ]]; then
       echo -e "注意: 落地机开启自定义tls证书，务必填写${Red_font_prefix}域名${Font_color_suffix}"
     fi
@@ -570,6 +599,7 @@ function proxy() {
   echo -e "[1] shadowsocks"
   echo -e "[2] socks5(强烈建议加隧道用于Telegram代理)"
   echo -e "[3] http"
+  echo -e "[4] Shadowsocks2022 (SS2022)"
   echo -e "-----------------------------------"
   read -p "请选择代理类型: " numproxy
   if [ "$numproxy" == "1" ]; then
@@ -578,6 +608,8 @@ function proxy() {
     flag_a="socks"
   elif [ "$numproxy" == "3" ]; then
     flag_a="http"
+  elif [ "$numproxy" == "4" ]; then
+    flag_a="ss2022"
   else
     echo "type error, please try again"
     exit
@@ -658,6 +690,8 @@ function method() {
       fi
     elif [ "$is_encrypt" == "ss" ]; then
       echo "        \"ss://$d_ip:$s_port@:$d_port\"" >>$gost_conf_path
+    elif [ "$is_encrypt" == "ss2022" ]; then
+      echo "        \"ss2022://$d_ip:$s_port@:$d_port\"" >>$gost_conf_path
     elif [ "$is_encrypt" == "socks" ]; then
       echo "        \"socks5://$d_ip:$s_port@:$d_port\"" >>$gost_conf_path
     elif [ "$is_encrypt" == "http" ]; then
@@ -739,6 +773,8 @@ function method() {
       fi
     elif [ "$is_encrypt" == "ss" ]; then
       echo "        \"ss://$d_ip:$s_port@:$d_port\"" >>$gost_conf_path
+    elif [ "$is_encrypt" == "ss2022" ]; then
+      echo "        \"ss2022://$d_ip:$s_port@:$d_port\"" >>$gost_conf_path
     elif [ "$is_encrypt" == "socks" ]; then
       echo "        \"socks5://$d_ip:$s_port@:$d_port\"" >>$gost_conf_path
     elif [ "$is_encrypt" == "http" ]; then
@@ -813,6 +849,8 @@ function show_all_conf() {
       str=" wss解密 "
     elif [ "$is_encrypt" == "ss" ]; then
       str="   ss   "
+    elif [ "$is_encrypt" == "ss2022" ]; then
+      str=" ss2022 "
     elif [ "$is_encrypt" == "socks" ]; then
       str=" socks5 "
     elif [ "$is_encrypt" == "http" ]; then
@@ -851,12 +889,12 @@ cron_restart() {
     if [ "$numcrontype" == "1" ]; then
       echo -e "-----------------------------------"
       read -p "每？小时重启: " cronhr
-      echo "0 0 */$cronhr * * ? * systemctl restart gost" >>/etc/crontab
+      echo "0 */$cronhr * * * root systemctl restart gost" >>/etc/crontab
       echo -e "定时重启设置成功！"
     elif [ "$numcrontype" == "2" ]; then
       echo -e "-----------------------------------"
       read -p "每日？点重启: " cronhr
-      echo "0 0 $cronhr * * ? systemctl restart gost" >>/etc/crontab
+      echo "0 $cronhr * * * root systemctl restart gost" >>/etc/crontab
       echo -e "定时重启设置成功！"
     else
       echo "type error, please try again"
@@ -872,14 +910,14 @@ cron_restart() {
 }
 
 update_sh() {
-  ol_version=$(curl -L -s --connect-timeout 5 https://raw.githubusercontent.com/KANIKIG/Multi-EasyGost/master/gost.sh | grep "shell_version=" | head -1 | awk -F '=|"' '{print $3}')
+  ol_version=$(curl -L -s --connect-timeout 5 https://raw.githubusercontent.com/brucelau1987cn/Multi-EasyGost/master/gost.sh | grep "shell_version=" | head -1 | awk -F '=|"' '{print $3}')
   if [ -n "$ol_version" ]; then
     if [[ "$shell_version" != "$ol_version" ]]; then
       echo -e "存在新版本，是否更新 [Y/N]?"
       read -r update_confirm
       case $update_confirm in
       [yY][eE][sS] | [yY])
-        wget -N --no-check-certificate https://raw.githubusercontent.com/KANIKIG/Multi-EasyGost/master/gost.sh
+        wget -N --no-check-certificate https://raw.githubusercontent.com/brucelau1987cn/Multi-EasyGost/master/gost.sh
         echo -e "更新完成"
         exit 0
         ;;
@@ -901,7 +939,7 @@ echo && echo -e "                 gost 一键安装配置脚本"${Red_font_prefi
         (2)能够在不借助其他工具(如screen)的情况下实现多条转发规则同时生效
         (3)机器reboot后转发不失效
   功能: (1)tcp+udp不加密转发, (2)中转机加密转发, (3)落地机解密对接转发
-  帮助文档：https://github.com/KANIKIG/Multi-EasyGost
+  帮助文档：https://github.com/brucelau1987cn/Multi-EasyGost
 
  ${Green_font_prefix}1.${Font_color_suffix} 安装 gost
  ${Green_font_prefix}2.${Font_color_suffix} 更新 gost
