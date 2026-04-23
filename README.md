@@ -19,7 +19,6 @@
 ### 🆕 新功能
 - **gost 版本自动获取最新版**：从 GitHub API 动态拉取最新 release 版本，不再绑定固定版本
 - **gh-proxy.com 国内加速下载**：替换原已废弃的 OSS 镜像，国内机器可选加速
-- **Shadowsocks2022 支持**：新增 SS2022 协议，支持 `2022-blake3-aes-128-gcm` 和 `2022-blake3-aes-256-gcm` 加密
 
 ### 🐛 Bug 修复
 - 安装校验路径错误：`/usr/lib/systemctl/` → `/usr/lib/systemd/system/`
@@ -57,7 +56,7 @@
 - 新支持传输类型
   - relay+ws
   - relay+wss
-- 落地机一键创建 ss/socks5/http/SS2022 代理 (gost 内置)
+- 落地机一键创建 ss/socks5/http 代理 (gost 内置)
 - 支持多传输类型的多落地简单型均衡负载
 - **gh-proxy.com 国内加速下载镜像**
 - 简单创建或删除 gost 定时重启任务
