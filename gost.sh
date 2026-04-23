@@ -94,8 +94,8 @@ function Install_ct() {
   if [[ -z "$ct_new_ver" ]]; then
     check_new_ver
   fi
-  echo -e "若为国内机器建议使用 gh-proxy.com 加速下载"
-  read -e -p "是否使用国内加速镜像？[y/n]:" addyn
+  echo -e "若为国内机器建议使用 ghfast.top 加速下载"
+  read -e -p "是否使用 ghfast.top 加速镜像？[y/n]:" addyn
   [[ -z ${addyn} ]] && addyn="n"
   # 从 GitHub API 获取实际下载 URL（兼容新旧版本文件名格式）
   GOST_DL_URL=$(wget -qO- -t2 -T5 "https://api.github.com/repos/ginuerzh/gost/releases/tags/v${ct_new_ver}" | grep "browser_download_url" | grep -i "linux.*${bit}" | head -1 | sed 's/.*"browser_download_url": *"//;s/".*//')
