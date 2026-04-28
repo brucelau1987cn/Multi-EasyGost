@@ -6,6 +6,8 @@ shell_version="1.2.0"
 ct_new_ver=""  # 动态获取最新版，见 check_new_ver()
 gost_conf_path="/etc/gost/config.json"
 raw_conf_path="/etc/gost/rawconf"
+repo_branch="v2"
+repo_raw_base="https://raw.githubusercontent.com/brucelau1987cn/Multi-EasyGost/${repo_branch}"
 function checknew() {
   checknew=$(gost -V 2>&1 | awk '{print $2}')
   # check_new_ver
@@ -22,8 +24,21 @@ function checknew() {
     exit 0
   fi
 }
+valid_positive_integer() {
+  [[ "$1" =~ ^[1-9][0-9]*$ ]]
+}
+
+valid_hour_interval() {
+  valid_positive_integer "$1" && (( 24 % 10#$1 == 0 ))
+}
+
+valid_hour_of_day() {
+  [[ "$1" =~ ^([01]?[0-9]|2[0-3])$ ]]
+}
+
 function check_sys() {
   if [ -f /etc/os-release ]; then
+    # shellcheck source=/dev/null
     . /etc/os-release
     case "$ID" in
       debian|ubuntu) release="$ID" ;;
@@ -104,8 +119,8 @@ function Install_ct() {
     GOST_DL_URL="https://github.com/ginuerzh/gost/releases/download/v${ct_new_ver}/gost-linux-${bit}-${ct_new_ver}.gz"
   fi
   GOST_DL_NAME=$(basename "$GOST_DL_URL")
-  SVC_URL="https://raw.githubusercontent.com/brucelau1987cn/Multi-EasyGost/master/gost.service"
-  CONF_URL="https://raw.githubusercontent.com/brucelau1987cn/Multi-EasyGost/master/config.json"
+  SVC_URL="${repo_raw_base}/gost.service"
+  CONF_URL="${repo_raw_base}/config.json"
   if [[ ${addyn} == [Yy] ]]; then
     GOST_DL_URL="https://ghfast.top/${GOST_DL_URL}"
     SVC_DL_URL="https://ghfast.top/${SVC_URL}"
@@ -128,17 +143,15 @@ function Install_ct() {
     mv "${GOST_DL_NAME%.gz}" /usr/bin/gost 2>/dev/null
   fi
   chmod 755 /usr/bin/gost
-  wget --no-check-certificate "$SVC_DL_URL" && chmod 755 gost.service && mv gost.service /usr/lib/systemd/system
-  mkdir -p /etc/gost && wget --no-check-certificate "$CONF_DL_URL" && mv config.json /etc/gost && chmod 755 /etc/gost
+  wget --no-check-certificate "$SVC_DL_URL" -O gost.service
+  install -m 0644 gost.service /usr/lib/systemd/system/gost.service
+  mkdir -p /etc/gost
+  wget --no-check-certificate "$CONF_DL_URL" -O config.json
+  install -m 0644 config.json /etc/gost/config.json
+  chmod 755 /etc/gost
 
   # 恢复备份的 rawconf
   if [ -f /tmp/gost_rawconf_bak ]; then
-    mkdir -p /etc/gost
-    cp /tmp/gost_rawconf_bak "$raw_conf_path" 2>/dev/null
-    rm -f /tmp/gost_rawconf_bak
-  fi
-  if [ -f /tmp/gost_rawconf_bak ]; then
-    mkdir -p /etc/gost
     cp /tmp/gost_rawconf_bak "$raw_conf_path" 2>/dev/null
     rm -f /tmp/gost_rawconf_bak
   fi
@@ -154,14 +167,12 @@ function Install_ct() {
     rm -rf "$(pwd)"/gost
     rm -rf "$(pwd)"/gost.service
     rm -rf "$(pwd)"/config.json
-    rm -rf "$(pwd)"/gost.sh
   fi
 }
 function Uninstall_ct() {
   rm -rf /usr/bin/gost
   rm -rf /usr/lib/systemd/system/gost.service
   rm -rf /etc/gost
-  rm -rf "$(pwd)"/gost.sh
   echo "gost已经成功删除"
 }
 function Start_ct() {
@@ -306,7 +317,7 @@ function read_d_ip() {
     echo -e "------------------------------------------------------------------"
     echo -e "请输入落地列表文件名"
     read -e -p "自定义但不同配置应不重复，不用输入后缀，例如ips1、iplist2: " flag_c
-    touch $flag_c.txt
+    touch "$flag_c.txt"
     echo -e "------------------------------------------------------------------"
     echo -e "请依次输入你要均衡负载的落地ip与端口"
     while true; do
@@ -314,7 +325,7 @@ function read_d_ip() {
       read -p "请输入: " peer_ip
       echo -e "请问你要将本机从${flag_b}接收到的流量转发向${peer_ip}的哪个端口?"
       read -p "请输入: " peer_port
-      echo -e "$peer_ip:$peer_port" >>$flag_c.txt
+      echo -e "$peer_ip:$peer_port" >>"$flag_c.txt"
       read -e -p "是否继续添加落地？[Y/n]:" addyn
       [[ -z ${addyn} ]] && addyn="y"
       if [[ ${addyn} == [Nn] ]]; then
@@ -404,7 +415,8 @@ function read_d_port() {
   fi
 }
 function writerawconf() {
-  echo $flag_a"/""$flag_b""#""$flag_c""#""$flag_d" >>$raw_conf_path
+  mkdir -p "$(dirname "$raw_conf_path")"
+  printf '%s/%s#%s#%s\n' "$flag_a" "$flag_b" "$flag_c" "$flag_d" >>"$raw_conf_path"
 }
 function rawconf() {
   read_protocol
@@ -437,7 +449,7 @@ function conflast() {
 }" >>$gost_conf_path
 }
 function multiconflast() {
-  if [ $i -eq $count_line ]; then
+  if [ "$i" -eq "$count_line" ]; then
     echo "            ]
         }" >>$gost_conf_path
   else
@@ -551,9 +563,9 @@ function cert() {
       if "$HOME"/.acme.sh/acme.sh --issue -d "${domain}" --standalone -k ec-256 --force; then
         echo -e "SSL 证书生成成功，默认申请高安全性的ECC证书"
         if [ ! -d "$HOME/gost_cert" ]; then
-          mkdir $HOME/gost_cert
+          mkdir -p "$HOME/gost_cert"
         fi
-        if "$HOME"/.acme.sh/acme.sh --installcert -d "${domain}" --fullchainpath $HOME/gost_cert/cert.pem --keypath $HOME/gost_cert/key.pem --ecc --force; then
+        if "$HOME"/.acme.sh/acme.sh --installcert -d "${domain}" --fullchainpath "$HOME/gost_cert/cert.pem" --keypath "$HOME/gost_cert/key.pem" --ecc --force; then
           echo -e "SSL 证书配置成功，且会自动续签，证书及秘钥位于用户目录下的 ${Red_font_prefix}gost_cert${Font_color_suffix} 目录"
           echo -e "证书目录名与证书文件名请勿更改; 删除 gost_cert 目录后用脚本重启,即自动启用gost内置证书"
           echo -e "-----------------------------------"
@@ -570,9 +582,9 @@ function cert() {
       if "$HOME"/.acme.sh/acme.sh --issue --dns dns_cf -d "${domain}" --standalone -k ec-256 --force; then
         echo -e "SSL 证书生成成功，默认申请高安全性的ECC证书"
         if [ ! -d "$HOME/gost_cert" ]; then
-          mkdir $HOME/gost_cert
+          mkdir -p "$HOME/gost_cert"
         fi
-        if "$HOME"/.acme.sh/acme.sh --installcert -d "${domain}" --fullchainpath $HOME/gost_cert/cert.pem --keypath $HOME/gost_cert/key.pem --ecc --force; then
+        if "$HOME"/.acme.sh/acme.sh --installcert -d "${domain}" --fullchainpath "$HOME/gost_cert/cert.pem" --keypath "$HOME/gost_cert/key.pem" --ecc --force; then
           echo -e "SSL 证书配置成功，且会自动续签，证书及秘钥位于用户目录下的 ${Red_font_prefix}gost_cert${Font_color_suffix} 目录"
           echo -e "证书目录名与证书文件名请勿更改; 删除 gost_cert 目录后使用脚本重启, 即重新启用gost内置证书"
           echo -e "-----------------------------------"
@@ -802,7 +814,12 @@ function method() {
     elif [ "$is_encrypt" == "ss" ]; then
       echo "        \"ss://$d_ip:$s_port@:$d_port\"" >>$gost_conf_path
     elif [ "$is_encrypt" == "ss2022" ]; then
-      echo "        \"ss2022://$d_ip:$s_port@:$d_port\"" >>$gost_conf_path
+      # SS2022: d_ip=method, d_port=psk:ipsk (from rawconf), s_port=listen_port
+      ss2022_method="$d_ip"
+      ss2022_keys="$d_port"
+      ss2022_psk_val="${ss2022_keys%%:*}"
+      ss2022_ipsk_val="${ss2022_keys#*:}"
+      echo "        \"ss2022://${ss2022_method}:${ss2022_psk_val}@:${s_port}?ipsk=${ss2022_ipsk_val}\"" >>$gost_conf_path
     elif [ "$is_encrypt" == "socks" ]; then
       echo "        \"socks5://$d_ip:$s_port@:$d_port\"" >>$gost_conf_path
     elif [ "$is_encrypt" == "http" ]; then
@@ -817,23 +834,27 @@ function method() {
 }
 
 function writeconf() {
-  count_line=$(awk 'END{print NR}' $raw_conf_path)
-  for ((i = 1; i <= $count_line; i++)); do
-    if [ $i -eq 1 ]; then
-      trans_conf=$(sed -n "${i}p" $raw_conf_path)
+  if [[ ! -s "$raw_conf_path" ]]; then
+    echo -e "${Error} 未找到转发规则，请先新增 gost 转发配置。"
+    return 1
+  fi
+  count_line=$(awk 'END{print NR}' "$raw_conf_path")
+  for ((i = 1; i <= count_line; i++)); do
+    if [ "$i" -eq 1 ]; then
+      trans_conf=$(sed -n "${i}p" "$raw_conf_path")
       eachconf_retrieve
       method
-    elif [ $i -gt 1 ]; then
-      if [ $i -eq 2 ]; then
+    elif [ "$i" -gt 1 ]; then
+      if [ "$i" -eq 2 ]; then
         echo "    ],
     \"Routes\": [" >>$gost_conf_path
-        trans_conf=$(sed -n "${i}p" $raw_conf_path)
+        trans_conf=$(sed -n "${i}p" "$raw_conf_path")
         eachconf_retrieve
         multiconfstart
         method
         multiconflast
       else
-        trans_conf=$(sed -n "${i}p" $raw_conf_path)
+        trans_conf=$(sed -n "${i}p" "$raw_conf_path")
         eachconf_retrieve
         multiconfstart
         method
@@ -848,9 +869,13 @@ function show_all_conf() {
   echo -e "序号|方法\t    |本地端口\t|目的地地址:目的地端口"
   echo -e "--------------------------------------------------------"
 
-  count_line=$(awk 'END{print NR}' $raw_conf_path)
-  for ((i = 1; i <= $count_line; i++)); do
-    trans_conf=$(sed -n "${i}p" $raw_conf_path)
+  if [[ ! -s "$raw_conf_path" ]]; then
+    echo -e "${Error} 当前没有 gost 转发配置。"
+    return 1
+  fi
+  count_line=$(awk 'END{print NR}' "$raw_conf_path")
+  for ((i = 1; i <= count_line; i++)); do
+    trans_conf=$(sed -n "${i}p" "$raw_conf_path")
     eachconf_retrieve
 
     if [ "$is_encrypt" == "nonencrypt" ]; then
@@ -917,13 +942,23 @@ cron_restart() {
     if [ "$numcrontype" == "1" ]; then
       echo -e "-----------------------------------"
       read -p "每？小时重启: " cronhr
-      echo "0 */$cronhr * * * root systemctl restart gost" >>/etc/crontab
-      echo -e "定时重启设置成功！"
+      if valid_hour_interval "$cronhr"; then
+        sed -i "/systemctl restart gost/d" /etc/crontab
+        echo "0 */$cronhr * * * root systemctl restart gost" >>/etc/crontab
+        echo -e "定时重启设置成功！"
+      else
+        echo "请输入能整除 24 的正整数小时数（如 1、2、3、4、6、8、12、24）"
+      fi
     elif [ "$numcrontype" == "2" ]; then
       echo -e "-----------------------------------"
       read -p "每日？点重启: " cronhr
-      echo "0 $cronhr * * * root systemctl restart gost" >>/etc/crontab
-      echo -e "定时重启设置成功！"
+      if valid_hour_of_day "$cronhr"; then
+        sed -i "/systemctl restart gost/d" /etc/crontab
+        echo "0 $cronhr * * * root systemctl restart gost" >>/etc/crontab
+        echo -e "定时重启设置成功！"
+      else
+        echo "请输入 0-23 之间的小时数"
+      fi
     else
       echo "type error, please try again"
       exit
@@ -938,14 +973,14 @@ cron_restart() {
 }
 
 update_sh() {
-  ol_version=$(curl -L -s --connect-timeout 5 -m 10 https://raw.githubusercontent.com/brucelau1987cn/Multi-EasyGost/master/gost.sh | grep "shell_version=" | head -1 | awk -F '=|"' '{print $3}')
+  ol_version=$(curl -L -s --connect-timeout 5 -m 10 "${repo_raw_base}/gost.sh" | grep "shell_version=" | head -1 | awk -F '=|"' '{print $3}')
   if [ -n "$ol_version" ]; then
     if [[ "$shell_version" != "$ol_version" ]]; then
       echo -e "存在新版本，是否更新 [Y/N]?"
       read -r update_confirm
       case $update_confirm in
       [yY][eE][sS] | [yY])
-        wget -N --no-check-certificate https://raw.githubusercontent.com/brucelau1987cn/Multi-EasyGost/master/gost.sh
+        wget -N --no-check-certificate "${repo_raw_base}/gost.sh"
         echo -e "更新完成"
         exit 0
         ;;
@@ -1021,8 +1056,13 @@ case "$num" in
 9)
   show_all_conf
   read -p "请输入你要删除的配置编号：" numdelete
-  if echo $numdelete | grep -q '[0-9]'; then
-    sed -i "${numdelete}d" $raw_conf_path
+  if valid_positive_integer "$numdelete"; then
+    count_line=$(awk 'END{print NR}' "$raw_conf_path")
+    if (( numdelete > count_line )); then
+      echo "配置编号不存在"
+      exit 1
+    fi
+    sed -i "${numdelete}d" "$raw_conf_path"
     rm -rf /etc/gost/config.json
     confstart
     writeconf

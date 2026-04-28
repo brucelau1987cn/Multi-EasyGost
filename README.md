@@ -27,7 +27,11 @@
 - `check_sys()` 过时：改用 `/etc/os-release` 检测系统（兼容现代 Debian/Ubuntu）
 - 重装丢失转发规则：`check_nor_file()` 保留 rawconf 备份恢复
 - 变量未加引号：修复空输入导致语法错误
-- 更新源指向：从上游 KANIKIG 改为本 Fork 仓库
+- 更新源指向：从上游 KANIKIG 改为本 Fork 仓库 `v2` 分支
+- 安装/卸载安全性：不再删除当前目录下的 `gost.sh`，避免脚本自删导致后续维护不便
+- systemd 服务修复：移除与 `User=root` 冲突的 `DynamicUser=true`，并将 service 文件权限固定为 `0644`
+- 配置生成健壮性：空 `rawconf` 时给出提示并停止生成，避免生成损坏 JSON；修复多条 SS2022 转发规则格式不一致
+- 输入校验：删除转发配置编号、定时重启小时数增加合法性校验，避免误删/写入非法 cron
 
 ***
 
@@ -35,7 +39,7 @@
 
 * 启动脚本
   ```bash
-  wget --no-check-certificate -O gost.sh https://raw.githubusercontent.com/brucelau1987cn/Multi-EasyGost/master/gost.sh && chmod +x gost.sh && ./gost.sh
+  wget --no-check-certificate -O gost.sh https://raw.githubusercontent.com/brucelau1987cn/Multi-EasyGost/v2/gost.sh && chmod +x gost.sh && ./gost.sh
   ```
 * 再次运行本脚本只需要输入 `./gost.sh` 回车即可
 
